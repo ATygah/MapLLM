@@ -1,0 +1,54 @@
+class GPTModel(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.tok_emb = nn.Embedding(cfg["vocab_size"], cfg["emb_dim"])
+        self.pos_emb = nn.Embedding(cfg["context_length"], cfg["emb_dim"])
+        self.drop_emb = nn.Dropout(cfg["drop_rate"])
+        self.trf_blocks = nn.Sequential(
+            *[TransformerBlock(cfg) for _ in range(cfg["n_layers"])]
+        )
+        self.final_norm = LayerNorm(cfg["emb_dim"])
+        self.out_head = nn.Linear(
+            cfg["emb_dim"], cfg["vocab_size"], bias=False
+        )
+
+    def forward(self, in_idx):
+        batch_size, seq_len = in_idx.shape
+        tok_embeds = self.tok_emb(in_idx) - IMPLEMENTED IN embed.py
+        pos_embeds = self.pos_emb(
+            torch.arange(seq_len, device=in_idx.device)
+        ) - IMPLEMENTED IN embed.py
+        x = tok_embeds + pos_embeds - IMPLEMENTED IN embed.py
+        x = self.drop_emb(x) - NOT IMPLEMENTED YET
+        x = self.trf_blocks(x) - 
+        x = self.final_norm(x) - IMPLEMENTED IN norm.py
+        logits = self.out_head(x) - IMPLEMENTED IN fc.py
+        return logits
+
+The embed.py module handles all embedding-related calculations and memory management for the transformer model. It provides three key functionalities:
+
+1. Embedding Memory Calculation:
+- calculate_embedding_memory() computes the memory footprint of embedding tables
+- Takes vocab_size, embedding_dim, and dtype as inputs
+- Returns total memory usage in bytes
+- Used to track memory usage of token and positional embedding tables
+
+2. Embedding FLOPs Calculation: 
+- calculate_embedding_flops() computes the floating point operations for combining embeddings
+- Takes batch_size, seq_len, and embedding_dim as inputs
+- Counts the element-wise addition operations between token and positional embeddings
+- Used to track computational cost of embedding layer
+
+3. Intermediate Size Calculation:
+- calculate_intermediate_size() computes memory usage of intermediate tensors
+- Works with either tensor objects or explicit dimension specifications
+- Used to track memory usage of embedding outputs before/after dropout
+
+In the GPTModel class:
+- Token embeddings are created using tok_emb with shape (vocab_size, emb_dim)
+- Positional embeddings are created using pos_emb with shape (context_length, emb_dim) 
+- The two embeddings are combined using element-wise addition
+- The resulting tensor has shape (batch_size, seq_len, emb_dim)
+- Memory usage is tracked using calculate_embedding_memory()
+- FLOPs are tracked using calculate_embedding_flops()
+
