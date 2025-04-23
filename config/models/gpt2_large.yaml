@@ -1,0 +1,9 @@
+model_name: "gpt2-large"
+vocab_size: 50257
+embed_dim: 1280
+context_length: 1024
+num_heads: 20
+num_layers: 36
+expansion_factor: 4
+dropout_rate: 0.1
+architecture: "gpt2" 

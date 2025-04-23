@@ -1,0 +1,16 @@
+model_name: "gpt3"
+attention_type: "self"
+vocab_size: 50257
+embed_dim: 12288
+max_seq_len: 2024
+batch_size: 1
+seq_len: 1024
+kv_seq_len: 1024
+dtype: "float32"
+num_heads: 96
+num_layers: 96
+mlp_expansion_factor: 4
+mlp_activation: "gelu"
+norm_type: "layernorm"
+dropout_rate: 0.1
+architecture: "gpt2" 

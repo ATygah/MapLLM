@@ -3,7 +3,7 @@ import torch.nn as nn
 #import torch.nn.functional as F
 from fc import calculate_ff_costs
 from attn import generic_qk_attention_flops,generic_attention_value_flops,softmax_flops
-from norm import calculate_norm_params_flops
+from norm_short import calculate_norm_params_flops
 from collections import OrderedDict
 
 def my_attention(query, key, value, num_heads=1, return_attn=False):

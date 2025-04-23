@@ -1,0 +1,4 @@
+Network Conflicts Summary
+File analyzed: demo.tsv
+
+No conflicts detected between tasks.

@@ -1,0 +1,16 @@
+model_name: "gpt2-small"
+attention_type: "self"
+vocab_size: 50257
+embed_dim: 768
+max_seq_len: 1024
+batch_size: 1
+seq_len: 1024
+kv_seq_len: 1024
+dtype: "float32"
+num_heads: 12
+num_layers: 12
+mlp_expansion_factor: 4
+mlp_activation: "gelu"
+norm_type: "layernorm"
+dropout_rate: 0.1
+architecture: "gpt2" 

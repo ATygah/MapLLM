@@ -1,0 +1,15 @@
+model_name: "phi-3-mini"
+attention_type: "self"
+vocab_size: 128000
+embed_dim: 2560
+max_seq_len: 32768
+batch_size: 8
+seq_len: 32768
+kv_seq_len: 32768
+dtype: "float16"
+num_heads: 32
+num_layers: 28
+mlp_expansion_factor: 4
+mlp_activation: "gelu"
+dropout_rate: 0.1
+architecture: "gpt2" 

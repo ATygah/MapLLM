@@ -1,0 +1,10 @@
+model_name: "vit-b16"
+image_size: 224
+patch_size: 16
+embed_dim: 768
+num_heads: 12
+num_layers: 12
+expansion_factor: 4
+num_classes: 1000
+architecture: "vit"
+context_length: 197  # (224/16)^2 + 1 class token 

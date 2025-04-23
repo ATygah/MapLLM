@@ -1,0 +1,15 @@
+model_name: "phi-2"
+attention_type: "self"
+vocab_size: 50296
+embed_dim: 2048
+max_seq_len: 2048
+batch_size: 8
+seq_len: 2048
+kv_seq_len: 2048
+dtype: "float16"
+num_heads: 32
+num_layers: 24
+mlp_expansion_factor: 4
+mlp_activation: "gelu"
+dropout_rate: 0.1
+architecture: "gpt2" 

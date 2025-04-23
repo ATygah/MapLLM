@@ -1,0 +1,9 @@
+model_name: "gpt2-medium"
+vocab_size: 50257
+embed_dim: 1024
+context_length: 1024
+num_heads: 16
+num_layers: 24
+expansion_factor: 4
+dropout_rate: 0.1
+architecture: "gpt2" 

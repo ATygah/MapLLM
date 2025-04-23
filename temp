@@ -1,0 +1,590 @@
+Model Name: gpt2-small
+Model Config:
+  model_name: gpt2-small
+  attention_type: self
+  vocab_size: 50257
+  embed_dim: 768
+  max_seq_len: 1024
+  batch_size: 1
+  seq_len: 1024
+  kv_seq_len: 1024
+  dtype: float32
+  num_heads: 12
+  num_layers: 12
+  mlp_expansion_factor: 4
+  mlp_activation: gelu
+  norm_type: layernorm
+  dropout_rate: 0.1
+  architecture: gpt2
+Total Params: 124358400
+Total Static Memory: 497433600
+Total FLOPs: 213539094528
+Total Activation Memory: 984612864
+Model Components (in position order):
+  tok_emb (position 0):
+    activation_memory: 3145728
+    flops: 0
+    params: 38597376
+    static_memory: 154389504
+    type: token_embedding
+  pos_emb (position 1):
+    activation_memory: 0
+    flops: 786432
+    params: 786432
+    static_memory: 3145728
+    type: positional_embedding
+  transformer_blocks_0 (position 2):
+    Model Name: transformer_blocks_0
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_1 (position 3):
+    Model Name: transformer_blocks_1
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_2 (position 4):
+    Model Name: transformer_blocks_2
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_3 (position 5):
+    Model Name: transformer_blocks_3
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_4 (position 6):
+    Model Name: transformer_blocks_4
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_5 (position 7):
+    Model Name: transformer_blocks_5
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_6 (position 8):
+    Model Name: transformer_blocks_6
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_7 (position 9):
+    Model Name: transformer_blocks_7
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_8 (position 10):
+    Model Name: transformer_blocks_8
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_9 (position 11):
+    Model Name: transformer_blocks_9
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_10 (position 12):
+    Model Name: transformer_blocks_10
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  transformer_blocks_11 (position 13):
+    Model Name: transformer_blocks_11
+    Model Config:
+      None
+    Total Params: 7080960
+    Total Static Memory: 28323840
+    Total FLOPs: 17793810432
+    Total Activation Memory: 81788928
+    Model Components (in position order):
+      ln_1 (position 0):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      attn (position 1):
+        activation_memory: 56623104
+        flops: 8090812416
+        params: 2359296
+        static_memory: 9437184
+        type: attention
+      shortcut_attn (position 2):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+      ln_2 (position 3):
+        activation_memory: 0
+        flops: 6291456
+        params: 1536
+        static_memory: 6144
+        type: layernorm
+      ffn (position 4):
+        activation_memory: 18874368
+        flops: 9688842240
+        params: 4718592
+        static_memory: 18874368
+        type: mlp
+      shortcut_ffn (position 5):
+        activation_memory: 3145728
+        flops: 786432
+        params: 0
+        static_memory: 0
+        type: shortcut
+  final_ln (position 14):
+    activation_memory: 0
+    flops: 6291456
+    params: 1536
+    static_memory: 6144
+    type: layernorm
+  head (position 15):
+    activation_memory: 0
+    flops: 6291456
+    params: 1536
+    static_memory: 6144
+    type: output_head
+
+Successful execution with updated configuration structure!
+(venv) PS D:\NN_Mapper> 

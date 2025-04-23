@@ -1,0 +1,4 @@
+split_strategy,noc_rows,noc_cols,grid_size,computation_pes,aggregation_pes,total_used_pes,utilization_pct
+column_split,1,2,2,2,0,2,100.0
+row_split,2,2,4,2,2,4,100.0
+hybrid_split,4,2,8,2,4,6,75.0

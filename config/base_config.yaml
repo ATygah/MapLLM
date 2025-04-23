@@ -1,0 +1,145 @@
+# Layer configurations with function mappings
+layers:
+  token_embedding:
+    type: "embedding"
+    module: "embed"
+    function_mappings:
+      params: "calculate_embedding_params"
+      static_memory: "calculate_embedding_memory"
+      flops: "calculate_embedding_flops"
+      activation_memory: "calculate_intermediate_size"
+    params_from_model:
+      - "vocab_size"
+      - "embed_dim"
+      
+  positional_embedding:
+    type: "embedding"
+    module: "embed"
+    function_mappings:
+      params: "calculate_embedding_params"
+      static_memory: "calculate_embedding_memory"
+      flops: "calculate_embedding_flops"
+      activation_memory: "calculate_intermediate_size"
+    params_from_model:
+      - "context_length"
+      - "embed_dim"
+      
+  attention:
+    type: "attention"
+    module: "attn"
+    function_mappings:
+      params: "calculate_attention_params"
+      static_memory: "calculate_attention_static_memory"
+      flops: "multihead_self_attention_flops"
+      activation_memory: "calculate_attention_activation_memory"
+    params_from_model:
+      - "embed_dim"
+      - "num_heads"
+      
+  mlp:
+    type: "mlp"
+    module: "fc"
+    function_mappings:
+      params: "calculate_ff_params"
+      static_memory: "calculate_ff_static_memory"
+      flops: "calculate_ff_flops"
+      activation_memory: "calculate_ff_activation_memory"
+    params_from_model:
+      - "embed_dim"
+      - "expansion_factor"
+      
+  layernorm:
+    type: "norm"
+    module: "norm"
+    function_mappings:
+      params: "calculate_norm_params"
+      static_memory: "calculate_norm_memory"
+      flops: "calculate_norm_params_flops"
+      activation_memory: "calculate_norm_activation_memory"
+    params_from_model:
+      - "embed_dim"
+      
+  output_head:
+    type: "fc"
+    module: "fc"
+    function_mappings:
+      params: "calculate_ff_params"
+      static_memory: "calculate_ff_static_memory"
+      flops: "calculate_ff_flops"
+      activation_memory: "calculate_ff_activation_memory"
+    params_from_model:
+      - "embed_dim"
+      - "vocab_size"
+      
+  conv_projection:
+    type: "conv"
+    module: "conv"
+    function_mappings:
+      params: "calculate_conv_params"
+      static_memory: "calculate_conv_memory"
+      flops: "calculate_conv_flops"
+      activation_memory: "calculate_conv_activation_memory"
+    params_from_model:
+      - "patch_size"
+      - "image_size"
+      - "embed_dim"
+
+  shortcut:
+    params_from_model:
+      - "embed_dim"
+    function_mappings:
+      activation_memory: "calculate_shortcut_memory"
+    # Estimated 0 FLOPs for simple addition (actual might vary)
+    flops: 0  
+    static_memory: 0  # No parameters in basic shortcut
+
+# Define model architectures as layer sequences
+architectures:
+  gpt2:
+    - name: "tok_emb"
+      layer_type: "token_embedding"
+    - name: "pos_emb"
+      layer_type: "positional_embedding"
+    - name: "transformer_blocks"
+      layer_type: "attention"
+      is_repeated: true
+      repeat_param: "num_layers"
+      sublayers:
+        - name: "ln_1"
+          layer_type: "layernorm"
+        - name: "attn"
+          layer_type: "attention"
+        - name: "shortcut_attn"
+          layer_type: "shortcut"
+        - name: "ln_2"
+          layer_type: "layernorm"
+        - name: "ffn"
+          layer_type: "mlp"
+        - name: "shortcut_ffn"
+          layer_type: "shortcut"
+    - name: "final_ln"
+      layer_type: "layernorm"
+    - name: "head"
+      layer_type: "output_head"
+      
+  vit:
+    - name: "conv_proj"
+      layer_type: "conv_projection"
+    - name: "pos_emb"
+      layer_type: "positional_embedding"
+    - name: "encoder_blocks"
+      is_repeated: true
+      repeat_param: "num_layers"
+      sublayers:
+        - name: "ln_1"
+          layer_type: "layernorm"
+        - name: "attn"
+          layer_type: "attention"
+        - name: "ln_2"
+          layer_type: "layernorm"
+        - name: "ffn"
+          layer_type: "mlp"
+    - name: "final_ln"
+      layer_type: "layernorm"
+    - name: "head"
+      layer_type: "output_head" 

@@ -1,0 +1,4 @@
+memory_per_pe: 65536
+max_pes: 10000
+bandwidth_per_link: 32
+max_flops_per_pe: None

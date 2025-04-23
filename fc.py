@@ -1,79 +1,69 @@
 # This module handles all the linear projection and feed forward calculations
+from data_structs import dtype_size, activation_flops
 
-from data_structs import dtype_size
+################################################################################
+#                               INFO OF THE LIBRARY                            #
+#                                                                              #
+# Variables:                                                                   #
+# --------------------------------------------                                 #
+# - dtype_size                                                                 #
+# - activation_flops                                                           #
+# - seq_len                                                                    #
+# - embed_dim                                                                  #
+# - vocab_size                                                                 #
+# - batch_size                                                                 #
+# - expansion_factor                                                           #
+# - activation_type                                                            #
+# - dtype                                                                      #
+#                                                                              #
+# Cost Calculation Functions:                                                  #
+# --------------------------------------------                                 #
+# - calculate_ff_flops -> int: Total FLOPs                                     #
+# - calculate_ff_static_memory -> tuple: (num_parameters, static_memory)       #
+# - calculate_ff_activation_memory -> int: Memory usage in bytes               #
+# - calculate_ff_costs -> tuple: (flops, parameters, static_memory, activation_memory) #
+# - calculate_mlp_costs -> tuple: (flops, parameters, static_memory, activation_memory) #
+# - calculate_activation_costs -> tuple: (flops, 0, 0, activation_memory)      #
+################################################################################
 
-def calculate_ff_flops(batch_size: int, seq_len: int, embed_dim: int, vocab_size: int) -> int:
-    """
-    Calculate FLOPs for the final feed-forward layer (output projection to vocab).
-    
-    Parameters:
-        batch_size (int): Number of samples in the batch.
-        seq_len (int): Sequence length.
-        embed_dim (int): Input embedding dimension.
-        vocab_size (int): Output vocabulary size.
-    
-    Returns:
-        int: Total FLOPs (floating-point operations)
-    """
-    # FLOPs = 2 * batch_size * seq_len * embed_dim * vocab_size
-    return 2 * batch_size * seq_len * embed_dim * vocab_size
+def calculate_ff_flops(seq_len: int, embed_dim: int, vocab_size: int) -> int:
+    # Returns: int: Total FLOPs
+    return 2 * seq_len * embed_dim * vocab_size
 
 def calculate_ff_static_memory(embed_dim: int, vocab_size: int, dtype: str = 'float32') -> int:
-    """
-    Calculate static memory for the feed-forward layer weights.
-    
-    Parameters:
-        embed_dim (int): Input embedding dimension.
-        vocab_size (int): Output vocabulary size.
-        dtype (str): Data type of the weights (default: 'float32').
-    
-    Returns:
-        int: Memory usage in bytes
-    """
-    # Weight matrix shape: (embed_dim, vocab_size)
+    # Returns: tuple: (num_parameters, static_memory)
     num_parameters = embed_dim * vocab_size
-    return num_parameters * dtype_size(dtype)
+    return num_parameters, num_parameters * dtype_size(dtype)
 
-def calculate_ff_activation_memory(batch_size: int, seq_len: int, vocab_size: int, dtype: str = 'float32') -> int:
-    """
-    Calculate dynamic memory for the feed-forward layer activations.
-    
-    Parameters:
-        batch_size (int): Number of samples in the batch.
-        seq_len (int): Sequence length.
-        vocab_size (int): Output vocabulary size.
-        dtype (str): Data type of the activations (default: 'float32').
-    
-    Returns:
-        int: Memory usage in bytes
-    """
-    # Activation shape: (batch_size, seq_len, vocab_size)
-    num_elements = batch_size * seq_len * vocab_size
+def calculate_ff_activation_memory(seq_len: int, vocab_size: int, dtype: str = 'float32') -> int:
+    # Returns: int: Memory usage in bytes
+    num_elements = seq_len * vocab_size
     return num_elements * dtype_size(dtype)
 
-def calculate_ff_costs(batch_size: int, seq_len: int, embed_dim: int, vocab_size: int, dtype: str = 'float32') -> tuple:
-    """
-    Calculate all costs for the final feed-forward layer.
-    
-    Returns:
-        tuple: (flops, static_memory_bytes, activation_memory_bytes)
-    """
-    flops = calculate_ff_flops(batch_size, seq_len, embed_dim, vocab_size)
-    static_memory = calculate_ff_static_memory(embed_dim, vocab_size, dtype)
-    activation_memory = calculate_ff_activation_memory(batch_size, seq_len, vocab_size, dtype)
-    return flops, static_memory, activation_memory
+def calculate_ff_costs(seq_len: int, embed_dim: int, vocab_size: int, dtype: str = 'float32') -> tuple:
+    # Returns: tuple: (flops, parameters, static_memory, activation_memory)
+    flops = calculate_ff_flops(seq_len, embed_dim, vocab_size)
+    parameters, static_memory = calculate_ff_static_memory(embed_dim, vocab_size, dtype)
+    activation_memory = calculate_ff_activation_memory(seq_len, vocab_size, dtype)
+    return flops, parameters, static_memory, activation_memory
 
-# Example usage
-# if __name__ == "__main__":
-#     # Example for GPT-2
-#     batch_size = 8
-#     seq_len = 1024
-#     embed_dim = 768
-#     vocab_size = 50257
-#     
-#     flops, static_mem, activation_mem = calculate_ff_costs(batch_size, seq_len, embed_dim, vocab_size)
-#     
-#     print(f"FLOPs: {flops / 1e9:.2f} GFLOPs")
-#     print(f"Static memory: {static_mem / (1024**2):.2f} MB")
-#     print(f"Activation memory: {activation_mem / (1024**2):.2f} MB"
+def calculate_mlp_costs(embed_dim: int, batch_size: int, seq_len: int, expansion_factor: int, activation_type: str, dtype: str = 'float32') -> tuple:
+    # Returns: tuple: (flops, parameters, static_memory, activation_memory)
+    flops_ff1, parameters_ff1, static_memory_ff1, activation_memory_ff1 = calculate_ff_costs(seq_len=seq_len, embed_dim=embed_dim, vocab_size=expansion_factor*embed_dim, dtype=dtype)
+    flops_ff2, parameters_ff2, static_memory_ff2, activation_memory_ff2 = calculate_ff_costs(seq_len=seq_len, embed_dim=expansion_factor*embed_dim, vocab_size=embed_dim, dtype=dtype)
+    flops_activation, parameters_activation, static_memory_activation, activation_memory_activation = calculate_activation_costs(seq_len, embed_dim, activation_type, dtype)
+    flops = (flops_ff1 + flops_ff2 + flops_activation) * batch_size
+    parameters = parameters_ff1 + parameters_ff2 + parameters_activation
+    static_memory = static_memory_ff1 + static_memory_ff2 + static_memory_activation
+    activation_memory = (activation_memory_ff1 + activation_memory_ff2 + activation_memory_activation) * batch_size
+    print(f"MLP: {flops}, {parameters}, {static_memory}, {activation_memory}")
+    return flops, parameters, static_memory, activation_memory
+
+def calculate_activation_costs(seq_len, embed_dim, activation_type, dtype='float32'):
+    # Returns: tuple: (flops, 0, 0, activation_memory)
+    data_type_size = dtype_size(dtype)
+    flops_per_element = activation_flops(activation_type)
+    activation_memory = seq_len * embed_dim * data_type_size
+    flops = activation_memory * flops_per_element
+    return flops, 0, 0, activation_memory
 
