@@ -287,103 +287,6 @@ class FCLayerMapper:
                 self.layer_pe_map[(layer_id, pe_idx)] = pe_coords
                 self.pe_layer_map[pe_coords] = (layer_id, pe_idx)
     
-    # def _map_to_rows(self, layer_pe_requirements):
-    #     """
-    #     Map layers to rows in the NoC.
-    #     Each layer is mapped to a row, and multiple PEs in that row handle splits.
-    #     For hybrid split, we arrange PEs in a 2D grid for each layer.
-        
-    #     Args:
-    #         layer_pe_requirements: Dictionary mapping layer_id to a list of split information.
-    #     """
-    #     # Get already used PEs from the parent LLM if available
-    #     already_used_pes = set()
-    #     if hasattr(self, 'neural_network') and hasattr(self.neural_network, 'llm') and self.neural_network.llm is not None:
-    #         already_used_pes = set(self.neural_network.llm.used_pes)
-            
-    #     for layer_id, split_ranges in layer_pe_requirements.items():
-    #         # Start with the preferred row (layer_id)
-    #         row = layer_id
-    #         valid_row_found = False
-            
-    #         # Try rows starting from layer_id until we find one with enough available columns
-    #         for row_offset in range(self.noc.rows):
-    #             # Calculate actual row to try (wrap around if needed)
-    #             row = (layer_id + row_offset) % self.noc.rows
-                
-    #             # Check if we have enough columns in this row, considering already used PEs
-    #             available_cols = [col for col in range(self.noc.cols) if (col, row) not in already_used_pes]
-    #             if len(split_ranges) <= len(available_cols):
-    #                 valid_row_found = True
-    #                 break
-            
-    #         if not valid_row_found:
-    #             raise ValueError(f"Layer {layer_id} requires {len(split_ranges)} PEs, "
-    #                              f"but couldn't find any row with enough available columns. "
-    #                              f"Consider increasing NoC dimensions.")
-            
-    #         # For hybrid split, organize PEs in a grid
-    #         if self.split_strategy == "hybrid_split":
-    #             # Group PEs by their column split (each group handles a subset of output neurons)
-    #             col_groups = {}
-    #             for pe_idx, (split_type, row_start, row_end, col_start, col_end) in enumerate(split_ranges):
-    #                 col_group = (col_start, col_end)
-    #                 if col_group not in col_groups:
-    #                     col_groups[col_group] = []
-    #                 col_groups[col_group].append((pe_idx, (split_type, row_start, row_end, col_start, col_end)))
-                
-    #             # Place PEs in a more structured way
-    #             pe_idx_map = {}  # Maps PE index to actual coordinates
-    #             current_col_idx = 0
-                
-    #             # For each column group, place all its PEs one after another
-    #             for col_group, pe_list in col_groups.items():
-    #                 for pe_idx, _ in pe_list:
-    #                     # Get the next available column from our filtered list
-    #                     if current_col_idx >= len(available_cols):
-    #                         raise ValueError(f"Not enough available PEs in row {row} for layer {layer_id}")
-                        
-    #                     col = available_cols[current_col_idx]
-    #                     pe_coords = (col, row)
-    #                     pe_idx_map[pe_idx] = pe_coords
-    #                     already_used_pes.add(pe_coords)  # Mark this PE as used
-    #                     current_col_idx += 1
-            
-    #         # Map each PE for this layer to the corresponding column in this row
-    #         for pe_idx, split_info in enumerate(split_ranges):
-    #             if self.split_strategy == "hybrid_split":
-    #                 # For hybrid, use the pre-calculated coordinates
-    #                 pe_coords = pe_idx_map[pe_idx]
-    #             else:
-    #                 # For non-hybrid, get the next available column
-    #                 if pe_idx >= len(available_cols):
-    #                     raise ValueError(f"Not enough available columns in row {row} for layer {layer_id}")
-                    
-    #                 col = available_cols[pe_idx]
-    #                 pe_coords = (col, row)
-    #                 already_used_pes.add(pe_coords)  # Mark this PE as used
-                
-    #             # Get the PE at these coordinates
-    #             pe = self.noc.get_pe(*pe_coords)
-                
-    #             # Weight matrix dimensions
-    #             if layer_id == 0:
-    #                 input_dim = self.input_dim
-    #             else:
-    #                 input_dim = self.output_dims[layer_id - 1]
-    #             output_dim = self.output_dims[layer_id]
-                
-    #             # Unpack split information
-    #             split_dim, row_start, row_end, col_start, col_end = split_info
-                
-    #             # Create weights tensor
-    #             pe_weights = torch.empty((row_end - row_start, col_end - col_start))
-    #             pe.set_weights(pe_weights, layer_id, split_dim, row_start, row_end, col_start, col_end)
-                
-    #             # Update maps
-    #             self.layer_pe_map[(layer_id, pe_idx)] = pe_coords
-    #             self.pe_layer_map[pe_coords] = (layer_id, pe_idx)
-    
     def _map_to_rows(self, layer_pe_requirements):
         """
         Map layers to rows in the NoC.
@@ -1508,3 +1411,1111 @@ class FCLayerMapper:
             
             # Remove used PEs from available list
             available_pes = available_pes[num_pes:]
+
+    def _find_position(self, height, width, already_used_pes, allow_wrapping=False):
+        """
+        Find a suitable position for a rectangular region in the NoC.
+        
+        Args:
+            height: Height of the region
+            width: Width of the region
+            already_used_pes: Set of PE coordinates that are already in use
+            allow_wrapping: Whether to allow wrapping around the edges of the NoC
+            
+        Returns:
+            Tuple of (start_y, start_x) for the region position, or None if no position found
+        """
+        # Adjust search range based on wrapping
+        max_row_range = self.noc.rows if allow_wrapping else self.noc.rows - height + 1
+        max_col_range = self.noc.cols if allow_wrapping else self.noc.cols - width + 1
+        
+        if max_row_range <= 0 or max_col_range <= 0:
+            return None
+        
+        # Try all possible positions
+        for start_y in range(max_row_range):
+            for start_x in range(max_col_range):
+                region_is_free = True
+                
+                # Check if this region is free
+                for y_offset in range(height):
+                    for x_offset in range(width):
+                        # Calculate position with potential wrapping
+                        noc_x = (start_x + x_offset) % self.noc.cols if allow_wrapping else start_x + x_offset
+                        noc_y = (start_y + y_offset) % self.noc.rows if allow_wrapping else start_y + y_offset
+                        
+                        # Skip if outside bounds (when not wrapping)
+                        if not allow_wrapping and (noc_x >= self.noc.cols or noc_y >= self.noc.rows):
+                            region_is_free = False
+                            break
+                        
+                        if (noc_x, noc_y) in already_used_pes:
+                            region_is_free = False
+                            break
+                    
+                    if not region_is_free:
+                        break
+                
+                if region_is_free:
+                    return (start_y, start_x)
+        
+        return None
+
+class AttentionLayerMapper:
+    """Maps self-attention mechanism to NoC topology."""
+    def __init__(self, 
+                 noc: NoCTopology,
+                 num_heads: int,
+                 head_dim: int,
+                 seq_len: int,
+                 batch_size: int = 1,
+                 execution_mode: str = "parallel",
+                 stage_reuse: bool = False,
+                 split_strategy: str = "query_sequence_split",
+                 data_type: str = "float16",
+                 neural_network=None,
+                 allow_wrapping: bool = False):
+        """
+        Initialize AttentionLayerMapper.
+        
+        Args:
+            noc: The NoC topology to map attention mechanism onto
+            num_heads: Number of attention heads
+            head_dim: Dimension of each attention head
+            seq_len: Sequence length for inference
+            batch_size: Batch size for inference
+            execution_mode: How to execute attention computations
+                          - "parallel": All attention components computed in parallel
+                          - "pipelined": Attention computed in stages
+            stage_reuse: Whether to reuse PEs across pipeline stages (only applies to pipelined mode)
+                        - True: Reuse PEs across stages (memory efficient but slower)
+                        - False: Assign dedicated PEs for each stage (faster but uses more PEs)
+            split_strategy: How to split computation across PEs
+                          - "query_sequence_split" (aka "token_split"): Split by query sequence dimension
+                          - "key_sequence_split" (aka "output_split"): Split by key sequence dimension
+                          - "head_dim_split" (aka "input_split"): Split by head dimension 
+                          - "hybrid_split": Split by key sequence and head dimensions
+                          - "combined": Use all dimensions for splitting
+            data_type: The data type used for computation
+            neural_network: Reference to the parent neural network
+            allow_wrapping: Whether to allow wrapping around the edges of the NoC (default: False)
+        """
+        self.noc = noc
+        self.num_heads = num_heads
+        self.head_dim = head_dim
+        self.seq_len = seq_len
+        self.batch_size = batch_size
+        self.execution_mode = execution_mode
+        self.stage_reuse = stage_reuse
+        self.split_strategy = split_strategy
+        self.data_type = data_type
+        self.neural_network = neural_network
+        self.allow_wrapping = allow_wrapping
+        
+        # Import data_type_bytes from external module to avoid circular imports
+        self.data_type_bytes = dtype_size(self.data_type)
+        
+        # Maps (head_id, stage, pe_index) to PE coordinates
+        # stage can be 'qk', 'score', 'context' for pipelined execution
+        # or 'all' for parallel execution
+        self.attention_pe_map = {}
+        
+        # Maps PE coordinates to (head_id, stage, pe_index)
+        self.pe_attention_map = {}
+        
+        # Calculate memory requirements and determine PE allocation
+        self._calculate_splitting_config()
+        
+        # Apply mapping strategy
+        self._map_attention_to_pes()
+    
+    def _calculate_splitting_config(self):
+        """
+        Calculate the optimal splitting configuration for attention computation.
+        Based on the split strategy, this method determines how many ways to split
+        the query sequence, key sequence, and head dimensions.
+        
+        Splitting dimensions are also known by these alternate names:
+        - query_splits (also called token_splits): Splits along the query sequence dimension
+        - key_splits (also called output_splits): Splits along the key sequence dimension
+        - head_dim_splits (also called input_splits): Splits along the head dimension
+        """
+        # Shorthand for readability
+        b = self.batch_size
+        s = self.seq_len
+        d_h = self.head_dim
+        bytes_per_param = self.data_type_bytes
+        
+        # Define memory check helper function
+        def fits_in_memory(query_seq_splits, key_seq_splits, head_dim_splits):
+            """
+            Check if the given splitting configuration fits in PE memory.
+            
+            Args:
+                query_seq_splits (int): Number of splits along query sequence dimension (token_splits)
+                key_seq_splits (int): Number of splits along key sequence dimension (output_splits)
+                head_dim_splits (int): Number of splits along head dimension (input_splits)
+            
+            Returns:
+                bool: True if configuration fits in memory, False otherwise
+            """
+            # Partitioned sizes for attention components
+            # Q, K, V inputs (partitioned)
+            q_mem = b * (s / query_seq_splits) * (d_h / head_dim_splits) * bytes_per_param
+            k_mem = b * (s / key_seq_splits) * (d_h / head_dim_splits) * bytes_per_param
+            v_mem = b * (s / key_seq_splits) * (d_h / head_dim_splits) * bytes_per_param
+            
+            # Attention scores (partitioned)
+            score_mem = b * (s / query_seq_splits) * (s / key_seq_splits) * bytes_per_param
+            
+            # Output context vector (partitioned)
+            context_mem = b * (s / query_seq_splits) * (d_h / head_dim_splits) * bytes_per_param
+            
+            # Total memory per PE
+            if self.execution_mode == "parallel":
+                # All components in memory at once
+                total_mem = q_mem + k_mem + v_mem + score_mem + context_mem
+                return total_mem <= self.noc.pe_memory_size
+            
+            elif self.execution_mode == "pipelined":
+                if self.stage_reuse:
+                    # Each PE handles different stages at different times, so need max
+                    stage1_mem = q_mem + k_mem  # QK projection
+                    stage2_mem = score_mem  # Attention scores
+                    stage3_mem = v_mem + context_mem  # Context calculation
+                    max_stage_mem = max(stage1_mem, stage2_mem, stage3_mem)
+                    return max_stage_mem <= self.noc.pe_memory_size
+                else:
+                    # Dedicated PEs for each stage, so need all to fit individually
+                    stage1_mem = q_mem + k_mem  # QK projection
+                    stage2_mem = score_mem  # Attention scores
+                    stage3_mem = v_mem + context_mem  # Context calculation
+                    return (stage1_mem <= self.noc.pe_memory_size and 
+                            stage2_mem <= self.noc.pe_memory_size and 
+                            stage3_mem <= self.noc.pe_memory_size)
+        
+        # Initialize with an impossibly high value
+        best_pe_count_per_head = float('inf')
+        best_config = None
+        
+        # Define a helper function to evaluate and update configurations
+        def evaluate_config(query_splits, key_splits, head_dim_splits):
+            """
+            Evaluate a splitting configuration and update the best configuration if better.
+            
+            Args:
+                query_splits (int): Number of splits along query sequence dimension (token_splits)
+                key_splits (int): Number of splits along key sequence dimension (output_splits)
+                head_dim_splits (int): Number of splits along head dimension (input_splits)
+                
+            Returns:
+                bool: True if this configuration is valid and better than previous ones
+            """
+            nonlocal best_pe_count_per_head, best_config
+            
+            # Skip invalid configurations
+            if not fits_in_memory(query_splits, key_splits, head_dim_splits):
+                return False
+                
+            # Calculate PE count for this configuration
+            pe_count = query_splits * key_splits * head_dim_splits
+            
+            # For pipelined without reuse, multiply by 3 stages
+            if self.execution_mode == "pipelined" and not self.stage_reuse:
+                pe_count *= 3
+                
+            # Update best configuration if this one is better
+            if pe_count < best_pe_count_per_head:
+                best_pe_count_per_head = pe_count
+                best_config = (query_splits, key_splits, head_dim_splits)
+                return True
+                
+            return False
+        
+        # Search configurations based on split strategy
+        if self.split_strategy == "query_sequence_split" or self.split_strategy == "token_split":
+            # Search all combinations of query splits (token_splits) and head dimension splits (input_splits)
+            for head_dim_splits in range(1, d_h + 1):
+                for query_splits in range(1, s + 1):
+                    if evaluate_config(query_splits, 1, head_dim_splits):
+                        break
+                if best_config is not None:
+                    break
+                
+        elif self.split_strategy == "key_sequence_split" or self.split_strategy == "output_split":
+            # Search all combinations of key splits (output_splits) and head dimension splits (input_splits)
+            for head_dim_splits in range(1, d_h + 1):
+                for key_splits in range(1, s + 1):
+                    if evaluate_config(1, key_splits, head_dim_splits):
+                        break
+                if best_config is not None:
+                    break
+                
+        elif self.split_strategy == "head_dim_split" or self.split_strategy == "input_split":
+            # Search all combinations of head dimension splits (input_splits) and query sequence splits (token_splits)
+            for query_splits in range(1, s + 1):
+                for head_dim_splits in range(1, d_h + 1):
+                    if evaluate_config(query_splits, 1, head_dim_splits):
+                        break
+                if best_config is not None:
+                    break
+                
+        elif self.split_strategy == "hybrid_split":
+            # Split along both key sequence (output_splits) and head dimensions (input_splits)
+            for key_splits in range(1, s + 1):
+                found_in_loop = False
+                for head_dim_splits in range(1, d_h + 1):
+                    if evaluate_config(1, key_splits, head_dim_splits):
+                        found_in_loop = True
+                        break
+                if found_in_loop:
+                    break
+                    
+        elif self.split_strategy == "combined":
+            # Use all dimensions for splitting (comprehensive search across token_splits, output_splits, and input_splits)
+            # Limit search space to avoid too many iterations
+            max_query_splits = min(s, 32)
+            max_key_splits = min(s, 32)
+            max_head_dim_splits = min(d_h, 32)
+            
+            for query_splits in range(1, max_query_splits + 1):
+                found_in_outer = False
+                for key_splits in range(1, max_key_splits + 1):
+                    found_in_inner = False
+                    for head_dim_splits in range(1, max_head_dim_splits + 1):
+                        if evaluate_config(query_splits, key_splits, head_dim_splits):
+                            found_in_inner = True
+                            break
+                    if found_in_inner:
+                        found_in_outer = True
+                        break
+                if found_in_outer:
+                    break
+        
+        # If no solution found, throw an exception
+        if best_config is None:
+            raise ValueError(f"No viable configuration found for attention layer with split_strategy={self.split_strategy}, " 
+                           f"execution_mode={self.execution_mode}, noc_dims={self.noc.rows}x{self.noc.cols}")
+        
+        # Store the best configuration
+        self.query_seq_splits, self.key_seq_splits, self.head_dim_splits = best_config
+        self.total_pes_needed_per_head = best_pe_count_per_head
+        
+        # Total PEs needed for all heads
+        self.total_pes_needed = self.total_pes_needed_per_head * self.num_heads
+        
+        # Calculate partitioned memory sizes for each component based on the best config
+        self.memory_sizes = {
+            'q': b * (s / self.query_seq_splits) * (d_h / self.head_dim_splits) * bytes_per_param,
+            'k': b * (s / self.key_seq_splits) * (d_h / self.head_dim_splits) * bytes_per_param,
+            'v': b * (s / self.key_seq_splits) * (d_h / self.head_dim_splits) * bytes_per_param,
+            'score': b * (s / self.query_seq_splits) * (s / self.key_seq_splits) * bytes_per_param,
+            'context': b * (s / self.query_seq_splits) * (d_h / self.head_dim_splits) * bytes_per_param
+        }
+        
+        # Calculate the split ranges for each component
+        self._calculate_split_ranges()
+
+    def _map_attention_to_pes(self):
+        """
+        Map attention calculations to PEs based on the execution mode.
+        Each attention head is treated as an independent logical unit, with its own set of PEs.
+        Within each head, PEs handle different parts of the computation based on the chosen split strategy.
+        """
+        # Get already used PEs from the parent LLM if available
+        already_used_pes = set()
+        if hasattr(self, 'neural_network') and hasattr(self.neural_network, 'llm') and self.neural_network.llm is not None:
+            already_used_pes = set(self.neural_network.llm.used_pes)
+        
+        # Find available PEs in the NoC
+        available_pes = []
+        for x in range(self.noc.cols):
+            for y in range(self.noc.rows):
+                if (x, y) not in already_used_pes:
+                    available_pes.append((x, y))
+        
+        # Check if we have enough PEs
+        total_pes_needed = self.total_pes_needed
+        if len(available_pes) < total_pes_needed:
+            raise ValueError(f"Not enough available PEs for attention mechanism. "
+                          f"Required: {total_pes_needed}, Available: {len(available_pes)}")
+        
+        # Process each attention head separately
+        for head_id in range(self.num_heads):
+            # Calculate the number of PEs needed for a single head
+            pes_per_head = self.total_pes_needed_per_head
+            
+            # Take the next batch of PEs for this head
+            if pes_per_head > len(available_pes):
+                raise ValueError(f"Not enough available PEs for attention head {head_id}. "
+                              f"Required: {pes_per_head}, Available: {len(available_pes)}")
+            
+            head_pes = available_pes[:pes_per_head]
+            available_pes = available_pes[pes_per_head:]
+            
+            if self.execution_mode == "parallel":
+                # For parallel execution, each PE within a head computes all components for its partition
+                # Total partitions within a head (query × key × dim combinations)
+                total_partitions = self.query_seq_splits * self.key_seq_splits * self.head_dim_splits
+                
+                # Assign PEs for each partition within this head
+                for partition_idx in range(total_partitions):
+                    if partition_idx < len(head_pes):
+                        pe_coords = head_pes[partition_idx]
+                        
+                        # Mark PE as used
+                        already_used_pes.add(pe_coords)
+                        
+                        # Calculate indices for this partition
+                        q_idx = (partition_idx // (self.key_seq_splits * self.head_dim_splits))
+                        remaining = partition_idx % (self.key_seq_splits * self.head_dim_splits)
+                        k_idx = remaining // self.head_dim_splits
+                        d_idx = remaining % self.head_dim_splits
+                        
+                        # Calculate the actual PE index as used in split_ranges
+                        pe_idx = (q_idx * self.key_seq_splits * self.head_dim_splits +
+                                k_idx * self.head_dim_splits + d_idx)
+                        
+                        # Get the PE object
+                        pe = self.noc.get_pe(*pe_coords)
+                        
+                        # Set PE attributes for attention computation
+                        pe.execution_stage = 'all'
+                        pe.head_id = head_id
+                        pe.query_range = self.query_ranges[q_idx] if q_idx < len(self.query_ranges) else None
+                        pe.key_range = self.key_ranges[k_idx] if k_idx < len(self.key_ranges) else None
+                        pe.dim_range = self.dim_ranges[d_idx] if d_idx < len(self.dim_ranges) else None
+                        
+                        # Map all components for this partition
+                        for component in ['q', 'k', 'v', 'score', 'context']:
+                            split_key = (head_id, 'all', component, pe_idx)
+                            if split_key in self.split_ranges:
+                                # Store mapping
+                                self.attention_pe_map[split_key] = pe_coords
+                                
+                                # Set component-specific attributes
+                                split_info = self.split_ranges[split_key]
+                                for key, value in split_info.items():
+                                    attr_name = f"{component}_{key}"
+                                    setattr(pe, attr_name, value)
+                        
+                        # For PE to attention mapping, use one primary key
+                        self.pe_attention_map[pe_coords] = (head_id, 'all', 'q', pe_idx)
+            
+            else:  # pipelined execution
+                if self.stage_reuse:
+                    # When reusing PEs across stages, each PE handles all stages for its partition
+                    # Total partitions within a head (query × key × dim combinations)
+                    total_partitions = self.query_seq_splits * self.key_seq_splits * self.head_dim_splits
+                    
+                    # Assign PEs for each partition within this head
+                    for partition_idx in range(total_partitions):
+                        if partition_idx < len(head_pes):
+                            pe_coords = head_pes[partition_idx]
+                            
+                            # Mark PE as used
+                            already_used_pes.add(pe_coords)
+                            
+                            # Calculate indices for this partition
+                            q_idx = (partition_idx // (self.key_seq_splits * self.head_dim_splits))
+                            remaining = partition_idx % (self.key_seq_splits * self.head_dim_splits)
+                            k_idx = remaining // self.head_dim_splits
+                            d_idx = remaining % self.head_dim_splits
+                            
+                            # Calculate the actual PE index as used in split_ranges
+                            pe_idx = (q_idx * self.key_seq_splits * self.head_dim_splits +
+                                    k_idx * self.head_dim_splits + d_idx)
+                            
+                            # Get the PE object
+                            pe = self.noc.get_pe(*pe_coords)
+                            
+                            # Set PE attributes
+                            pe.is_pipelined = True
+                            pe.reuse_stages = True
+                            pe.head_id = head_id
+                            pe.query_range = self.query_ranges[q_idx] if q_idx < len(self.query_ranges) else None
+                            pe.key_range = self.key_ranges[k_idx] if k_idx < len(self.key_ranges) else None
+                            pe.dim_range = self.dim_ranges[d_idx] if d_idx < len(self.dim_ranges) else None
+                            
+                            # Map all stages to this PE
+                            for stage, components in [
+                                ('qk', ['q', 'k']),
+                                ('score', ['score']),
+                                ('context', ['v', 'context'])
+                            ]:
+                                for component in components:
+                                    split_key = (head_id, stage, component, pe_idx)
+                                    if split_key in self.split_ranges:
+                                        # Store mapping
+                                        self.attention_pe_map[split_key] = pe_coords
+                                        
+                                        # Set component-specific attributes
+                                        split_info = self.split_ranges[split_key]
+                                        for key, value in split_info.items():
+                                            attr_name = f"{stage}_{component}_{key}"
+                                            setattr(pe, attr_name, value)
+                            
+                            # For PE to attention mapping, use one primary key
+                            self.pe_attention_map[pe_coords] = (head_id, 'qk', 'q', pe_idx)
+                else:
+                    # When using dedicated PEs for each stage, we need to split the available PEs for stages
+                    partitions_per_stage = self.query_seq_splits * self.key_seq_splits * self.head_dim_splits
+                    
+                    # Divide PEs for this head among the three stages
+                    stage1_pes = head_pes[:partitions_per_stage]
+                    stage2_pes = head_pes[partitions_per_stage:2*partitions_per_stage]
+                    stage3_pes = head_pes[2*partitions_per_stage:3*partitions_per_stage]
+                    
+                    # Process each stage separately
+                    for stage_num, (stage_name, components, stage_pes) in enumerate([
+                        ('qk', ['q', 'k'], stage1_pes),
+                        ('score', ['score'], stage2_pes),
+                        ('context', ['v', 'context'], stage3_pes)
+                    ]):
+                        # Skip if we don't have enough PEs for this stage
+                        if len(stage_pes) < partitions_per_stage:
+                            raise ValueError(f"Not enough PEs allocated for stage {stage_name} of head {head_id}.")
+                        
+                        # Assign PEs for each partition in this stage
+                        for partition_idx in range(partitions_per_stage):
+                            # Calculate indices for this partition
+                            q_idx = (partition_idx // (self.key_seq_splits * self.head_dim_splits))
+                            remaining = partition_idx % (self.key_seq_splits * self.head_dim_splits)
+                            k_idx = remaining // self.head_dim_splits
+                            d_idx = remaining % self.head_dim_splits
+                            
+                            # Calculate the actual PE index as used in split_ranges
+                            pe_idx = (q_idx * self.key_seq_splits * self.head_dim_splits +
+                                    k_idx * self.head_dim_splits + d_idx)
+                            
+                            pe_coords = stage_pes[partition_idx]
+                            pe = self.noc.get_pe(*pe_coords)
+                            
+                            # Set PE attributes
+                            pe.is_pipelined = True
+                            pe.reuse_stages = False
+                            pe.execution_stage = stage_name
+                            pe.head_id = head_id
+                            pe.query_range = self.query_ranges[q_idx] if q_idx < len(self.query_ranges) else None
+                            pe.key_range = self.key_ranges[k_idx] if k_idx < len(self.key_ranges) else None
+                            pe.dim_range = self.dim_ranges[d_idx] if d_idx < len(self.dim_ranges) else None
+                            
+                            # Map components for this stage to the PE
+                            for component in components:
+                                split_key = (head_id, stage_name, component, pe_idx)
+                                if split_key in self.split_ranges:
+                                    # Store mapping
+                                    self.attention_pe_map[split_key] = pe_coords
+                                    
+                                    # Set component-specific attributes
+                                    split_info = self.split_ranges[split_key]
+                                    for key, value in split_info.items():
+                                        attr_name = f"{component}_{key}"
+                                        setattr(pe, attr_name, value)
+                            
+                            # For PE to attention mapping, use one primary key (first component)
+                            if components:
+                                self.pe_attention_map[pe_coords] = (head_id, stage_name, components[0], pe_idx)
+
+    def _assign_pe(self, head_id, stage, pe_idx, pe_coords, already_used_pes, split_info=None, component=None):
+        """
+        Assign a PE for a specific head, stage, and index.
+        
+        Args:
+            head_id: ID of the attention head
+            stage: Stage of the attention computation ('qk', 'score', 'context')
+            pe_idx: Index of the PE within the stage
+            pe_coords: Coordinates of the PE in the NoC
+            already_used_pes: Set of PE coordinates that are already in use
+            split_info: Optional tuple with split information (split_dim, row_start, row_end, col_start, col_end)
+            component: Optional component type ('q', 'k', 'v', 'score', 'context')
+        """
+        # Ensure the PE is not already used
+        if pe_coords in already_used_pes:
+            raise ValueError(f"PE at coordinates {pe_coords} is already in use")
+        
+        # Mark this PE as used
+        already_used_pes.add(pe_coords)
+        
+        # Get the PE object
+        pe = self.noc.get_pe(*pe_coords)
+        
+        # Initialize PE for attention computation
+        pe.head_id = head_id
+        pe.stage = stage
+        
+        # Apply split information
+        if split_info:
+            split_dim, row_start, row_end, col_start, col_end = split_info
+            pe.split_dim = split_dim
+            pe.row_start = row_start
+            pe.row_end = row_end
+            pe.col_start = col_start
+            pe.col_end = col_end
+        elif stage in self.split_ranges and pe_idx < len(self.split_ranges[stage]):
+            # Use pre-computed split ranges
+            split_dim, row_start, row_end, col_start, col_end = self.split_ranges[stage][pe_idx]
+            pe.split_dim = split_dim
+            pe.row_start = row_start
+            pe.row_end = row_end
+            pe.col_start = col_start
+            pe.col_end = col_end
+        
+        # Update mapping dictionaries
+        if component:
+            # Store with component for per-head PE mapping
+            key = (head_id, stage, component, pe_idx)
+            self.attention_pe_map[key] = pe_coords
+        else:
+            # Backwards compatibility for old code using 3-tuple key
+            key = (head_id, stage, pe_idx)
+            self.attention_pe_map[key] = pe_coords
+            
+        # Store PE-to-key mapping
+        self.pe_attention_map[pe_coords] = key
+    
+    def get_head_pes(self, head_id):
+        """
+        Get all PE coordinates for a specific attention head.
+        
+        Args:
+            head_id: ID of the attention head
+            
+        Returns:
+            Dictionary mapping stages to lists of PE coordinates
+        """
+        head_pes = {}
+        for key, pe_coords in self.attention_pe_map.items():
+            if isinstance(key, tuple):
+                if len(key) == 4 and key[0] == head_id:
+                    # 4-tuple key: (head_id, stage, component, pe_idx)
+                    stage = key[1]
+                    if stage not in head_pes:
+                        head_pes[stage] = []
+                    if pe_coords not in head_pes[stage]:
+                        head_pes[stage].append(pe_coords)
+                elif len(key) == 3 and key[0] == head_id:
+                    # 3-tuple key: (head_id, stage, pe_idx)
+                    stage = key[1]
+                    if stage not in head_pes:
+                        head_pes[stage] = []
+                    if pe_coords not in head_pes[stage]:
+                        head_pes[stage].append(pe_coords)
+        return head_pes
+    
+    def get_component_pes(self, component):
+        """
+        Get all PE coordinates for a specific attention component.
+        
+        Args:
+            component: Component type ('q', 'k', 'v', 'score', 'context')
+            
+        Returns:
+            Dictionary mapping head IDs to lists of PE coordinates
+        """
+        component_pes = {}
+        for key, pe_coords in self.attention_pe_map.items():
+            if isinstance(key, tuple):
+                if len(key) == 4 and key[2] == component:
+                    # 4-tuple key: (head_id, stage, component, pe_idx)
+                    head_id = key[0]
+                    if head_id not in component_pes:
+                        component_pes[head_id] = []
+                    if pe_coords not in component_pes[head_id]:
+                        component_pes[head_id].append(pe_coords)
+        return component_pes
+    
+    def get_pe_details(self):
+        """
+        Get details of all mapped PEs.
+        
+        Returns:
+            DataFrame with details of all mapped PEs
+        """
+        details = []
+        for key, pe_coords in self.attention_pe_map.items():
+            if not isinstance(key, tuple):
+                continue
+                
+            if len(key) == 4:
+                # 4-tuple key: (head_id, stage, component, pe_idx)
+                head_id, stage, component, pe_idx = key
+            elif len(key) == 3:
+                # 3-tuple key: (head_id, stage, pe_idx)
+                head_id, stage, pe_idx = key
+                component = 'unknown'
+            else:
+                continue
+                
+            pe = self.noc.get_pe(*pe_coords)
+            
+            # Determine PE's role based on the stage and component
+            if stage == 'all':
+                role = 'parallel-full'
+            elif stage == 'qk':
+                role = 'pipeline-qk'
+            elif stage == 'score':
+                role = 'pipeline-score'
+            elif stage == 'context':
+                role = 'pipeline-context'
+            else:
+                role = 'unknown'
+            
+            # Extract ranges
+            head_range = getattr(pe, 'head_range', None)
+            query_range = getattr(pe, 'query_range', None)
+            key_range = getattr(pe, 'key_range', None)
+            
+            # For component-specific ranges (used in stage reuse mode)
+            component_head_range = getattr(pe, f"{component}_head_range", head_range)
+            component_seq_range = getattr(pe, f"{component}_seq_range", 
+                                         query_range if component in ['q', 'context'] else key_range)
+            component_dim_range = getattr(pe, f"{component}_dim_range", None)
+            
+            # Special handling for attention scores which have both query and key seq ranges
+            component_query_seq_range = getattr(pe, f"{component}_query_seq_range", query_range)
+            component_key_seq_range = getattr(pe, f"{component}_key_seq_range", key_range)
+            
+            # Format the tensor shape handled by this PE
+            tensor_shape = None
+            if component in ['q', 'k', 'v', 'context']:
+                # These components have shape (batch, seq, head_dim, heads)
+                if component_seq_range and component_head_range and component_dim_range:
+                    seq_size = component_seq_range[1] - component_seq_range[0]
+                    head_size = component_head_range[1] - component_head_range[0]
+                    dim_size = component_dim_range[1] - component_dim_range[0]
+                    tensor_shape = (self.batch_size, seq_size, dim_size, head_size)
+            elif component == 'score':
+                # Attention scores have shape (batch, heads, query_seq, key_seq)
+                if component_head_range and component_query_seq_range and component_key_seq_range:
+                    head_size = component_head_range[1] - component_head_range[0]
+                    query_size = component_query_seq_range[1] - component_query_seq_range[0]
+                    key_size = component_key_seq_range[1] - component_key_seq_range[0]
+                    tensor_shape = (self.batch_size, head_size, query_size, key_size)
+            
+            detail = {
+                'pe_coords': pe_coords,
+                'head_id': head_id,
+                'stage': stage,
+                'component': component,
+                'pe_idx': pe_idx,
+                'role': role,
+                'head_range': head_range,
+                'query_range': query_range,
+                'key_range': key_range,
+                'tensor_shape': tensor_shape,
+                'execution_mode': self.execution_mode,
+                'split_strategy': self.split_strategy
+            }
+            
+            # Only add details for distinct PEs (avoid duplicates)
+            if not any(d['pe_coords'] == pe_coords for d in details):
+                details.append(detail)
+        
+        return pd.DataFrame(details)
+    
+    def get_stage_pes(self, stage):
+        """
+        Get all PE coordinates for a specific execution stage.
+        
+        Args:
+            stage: Execution stage ('all', 'qk', 'score', or 'context')
+            
+        Returns:
+            List of PE coordinates assigned to the specified stage
+        """
+        stage_pes = []
+        for key, pe_coords in self.attention_pe_map.items():
+            if isinstance(key, tuple):
+                if (len(key) == 4 and key[1] == stage) or (len(key) == 3 and key[1] == stage):
+                    if pe_coords not in stage_pes:
+                        stage_pes.append(pe_coords)
+        return stage_pes
+    
+    def setup_aggregation_pes(self, neural_network=None):
+        """
+        Assign dedicated PEs for aggregating results from split attention computations.
+        
+        Args:
+            neural_network: Optional neural network reference, defaults to self.neural_network
+            
+        Returns:
+            Dictionary mapping (head_id, stage) to aggregation PE coordinates
+        """
+        if neural_network is None:
+            neural_network = self.neural_network
+        
+        # Get all PEs used by attention
+        all_attention_pes = set(self.attention_pe_map.values())
+        
+        # Get already used PEs from the parent LLM if available
+        all_used_pes = set(all_attention_pes)
+        if neural_network and hasattr(neural_network, 'llm') and neural_network.llm is not None:
+            all_used_pes.update(neural_network.llm.used_pes)
+        
+        # Initialize aggregation PE mappings
+        aggregation_pes = {}
+        
+        # Determine which heads and stages need aggregation
+        stages_needing_aggregation = {}
+        
+        for head_id in range(self.num_heads):
+            for stage in self.split_ranges:
+                if self.split_ranges[stage] > 1:
+                    # If a stage uses multiple PEs, it needs aggregation
+                    if head_id not in stages_needing_aggregation:
+                        stages_needing_aggregation[head_id] = []
+                    stages_needing_aggregation[head_id].append(stage)
+        
+        # For each stage that needs aggregation, assign an aggregation PE
+        for head_id, stages in stages_needing_aggregation.items():
+            for stage in stages:
+                # Get PEs used by this head for this stage
+                component_pes = []
+                for key, coords in self.attention_pe_map.items():
+                    if isinstance(key, tuple):
+                        if len(key) == 4 and key[0] == head_id and key[1] == stage:
+                            # 4-tuple key: (head_id, stage, component, pe_idx)
+                            if coords not in component_pes:
+                                component_pes.append(coords)
+                        elif len(key) == 3 and key[0] == head_id and key[1] == stage:
+                            # 3-tuple key: (head_id, stage, pe_idx)
+                            if coords not in component_pes:
+                                component_pes.append(coords)
+                
+                if not component_pes:
+                    continue
+                
+                # Try to find a nearby PE for aggregation
+                assigned = False
+                
+                # First try adjacent PEs
+                for pe_coords in component_pes:
+                    x, y = pe_coords
+                    
+                    # Try all four adjacent positions
+                    for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                        nx, ny = x + dx, y + dy
+                        
+                        # Skip if outside NoC boundaries
+                        if not (0 <= nx < self.noc.cols and 0 <= ny < self.noc.rows):
+                            continue
+                        
+                        # Skip if already used
+                        if (nx, ny) in all_used_pes:
+                            continue
+                        
+                        # Use this PE for aggregation
+                        aggregation_pes[(head_id, stage)] = (nx, ny)
+                        all_used_pes.add((nx, ny))
+                        assigned = True
+                        break
+                    
+                    if assigned:
+                        break
+                
+                # If no adjacent PE is available, find the nearest available PE
+                if not assigned:
+                    best_distance = float('inf')
+                    best_coords = None
+                    
+                    # Find the center of the component PEs
+                    center_x = sum(x for x, _ in component_pes) / len(component_pes)
+                    center_y = sum(y for _, y in component_pes) / len(component_pes)
+                    
+                    # Search for the nearest available PE
+                    for x in range(self.noc.cols):
+                        for y in range(self.noc.rows):
+                            if (x, y) in all_used_pes:
+                                continue
+                            
+                            # Calculate distance to center
+                            distance = ((x - center_x) ** 2 + (y - center_y) ** 2) ** 0.5
+                            
+                            if distance < best_distance:
+                                best_distance = distance
+                                best_coords = (x, y)
+                    
+                    if best_coords:
+                        aggregation_pes[(head_id, stage)] = best_coords
+                        all_used_pes.add(best_coords)
+        
+        return aggregation_pes
+
+    def _calculate_split_ranges(self):
+        """
+        Calculate split ranges for each PE based on the chosen configuration.
+        This determines which parts of the tensors each PE will handle.
+        Each attention head is treated as a separate logical unit, with splitting
+        happening within the head's internal dimensions.
+        """
+        s = self.seq_len
+        h = self.num_heads
+        d_h = self.head_dim
+        
+        # Initialize split ranges for each component and execution stage
+        self.split_ranges = {}
+        
+        # Calculate query sequence split ranges
+        query_ranges = []
+        query_seq_per_pe = math.ceil(s / self.query_seq_splits)
+        for i in range(self.query_seq_splits):
+            start_seq = i * query_seq_per_pe
+            end_seq = min((i + 1) * query_seq_per_pe, s)
+            # Only add if there's a valid range
+            if end_seq > start_seq:
+                query_ranges.append((start_seq, end_seq))
+        
+        # Calculate key sequence split ranges
+        key_ranges = []
+        key_seq_per_pe = math.ceil(s / self.key_seq_splits)
+        for i in range(self.key_seq_splits):
+            start_seq = i * key_seq_per_pe
+            end_seq = min((i + 1) * key_seq_per_pe, s)
+            # Only add if there's a valid range
+            if end_seq > start_seq:
+                key_ranges.append((start_seq, end_seq))
+        
+        # Calculate head dimension split ranges
+        dim_ranges = []
+        dims_per_pe = math.ceil(d_h / self.head_dim_splits)
+        for i in range(self.head_dim_splits):
+            start_dim = i * dims_per_pe
+            end_dim = min((i + 1) * dims_per_pe, d_h)
+            # Only add if there's a valid range
+            if end_dim > start_dim:
+                dim_ranges.append((start_dim, end_dim))
+        
+        # Store the calculated ranges
+        self.query_ranges = query_ranges
+        self.key_ranges = key_ranges
+        self.dim_ranges = dim_ranges
+        
+        # For each head, create the appropriate split ranges
+        for head_id in range(self.num_heads):
+            # For parallel execution, create ranges for all components within a single head
+            if self.execution_mode == "parallel":
+                # For each query range, key range, and dimension range combination
+                for q_idx, (query_start, query_end) in enumerate(query_ranges):
+                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
+                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
+                            # Calculate a unique PE index based on the combination
+                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
+                                    k_idx * len(dim_ranges) + d_idx)
+                            
+                            # Q tensor split: (batch, query_seq, head_dim)
+                            self.split_ranges[(head_id, 'all', 'q', pe_idx)] = {
+                                'seq_range': (query_start, query_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                            
+                            # K tensor split: (batch, key_seq, head_dim)
+                            self.split_ranges[(head_id, 'all', 'k', pe_idx)] = {
+                                'seq_range': (key_start, key_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                            
+                            # V tensor split: (batch, key_seq, head_dim)
+                            self.split_ranges[(head_id, 'all', 'v', pe_idx)] = {
+                                'seq_range': (key_start, key_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                            
+                            # Attention score tensor split: (batch, query_seq, key_seq)
+                            self.split_ranges[(head_id, 'all', 'score', pe_idx)] = {
+                                'query_seq_range': (query_start, query_end),
+                                'key_seq_range': (key_start, key_end)
+                            }
+                            
+                            # Context tensor split: (batch, query_seq, head_dim)
+                            self.split_ranges[(head_id, 'all', 'context', pe_idx)] = {
+                                'seq_range': (query_start, query_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+            
+            # For pipelined execution, split the computation into stages
+            else:  # self.execution_mode == "pipelined"
+                # Stage 1: QK attention computation
+                for q_idx, (query_start, query_end) in enumerate(query_ranges):
+                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
+                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
+                            # Calculate a unique PE index based on the combination
+                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
+                                    k_idx * len(dim_ranges) + d_idx)
+                            
+                            # Q tensor split for this PE
+                            self.split_ranges[(head_id, 'qk', 'q', pe_idx)] = {
+                                'seq_range': (query_start, query_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                            
+                            # K tensor split for this PE
+                            self.split_ranges[(head_id, 'qk', 'k', pe_idx)] = {
+                                'seq_range': (key_start, key_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                
+                # Stage 2: Attention score computation
+                for q_idx, (query_start, query_end) in enumerate(query_ranges):
+                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
+                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
+                            # Calculate a unique PE index based on the combination
+                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
+                                    k_idx * len(dim_ranges) + d_idx)
+                            
+                            # Attention score tensor split for this PE
+                            self.split_ranges[(head_id, 'score', 'score', pe_idx)] = {
+                                'query_seq_range': (query_start, query_end),
+                                'key_seq_range': (key_start, key_end)
+                            }
+                
+                # Stage 3: Context computation (softmax(QK^T) · V)
+                for q_idx, (query_start, query_end) in enumerate(query_ranges):
+                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
+                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
+                            # Calculate a unique PE index based on the combination
+                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
+                                    k_idx * len(dim_ranges) + d_idx)
+                            
+                            # V tensor split for this PE
+                            self.split_ranges[(head_id, 'context', 'v', pe_idx)] = {
+                                'seq_range': (key_start, key_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                            
+                            # Context tensor split for this PE
+                            self.split_ranges[(head_id, 'context', 'context', pe_idx)] = {
+                                'seq_range': (query_start, query_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+
+    def get_configuration_summary(self):
+        """
+        Get a summary of the attention configuration and PE assignment.
+        
+        Returns:
+            Dictionary with configuration details
+        """
+        # Get per-stage PE counts
+        all_stage_pes = set(self.get_stage_pes('all'))
+        qk_stage_pes = set(self.get_stage_pes('qk'))
+        score_stage_pes = set(self.get_stage_pes('score'))
+        context_stage_pes = set(self.get_stage_pes('context'))
+        
+        # Count PEs by stage
+        if self.execution_mode == 'parallel':
+            pes_by_stage = {'all': len(all_stage_pes)}
+            total_pes = len(all_stage_pes)
+        else:  # pipelined
+            pes_by_stage = {
+                'qk': len(qk_stage_pes),
+                'score': len(score_stage_pes),
+                'context': len(context_stage_pes)
+            }
+            total_pes = len(qk_stage_pes) + len(score_stage_pes) + len(context_stage_pes)
+        
+        # Calculate memory usage per PE
+        memory_usage_per_pe = {}
+        
+        if self.execution_mode == 'parallel':
+            # All components reside in memory at once
+            memory_usage_per_pe['all'] = sum(self.memory_sizes.values())
+        else:  # pipelined
+            if self.stage_reuse:
+                # Maximum memory across stages
+                memory_usage_per_pe['qk'] = self.memory_sizes['q'] + self.memory_sizes['k']
+                memory_usage_per_pe['score'] = self.memory_sizes['score']
+                memory_usage_per_pe['context'] = self.memory_sizes['v'] + self.memory_sizes['context']
+                max_memory = max(memory_usage_per_pe.values())
+                memory_usage_per_pe = {'max_across_stages': max_memory}
+            else:
+                # Memory for each stage separately
+                memory_usage_per_pe['qk'] = self.memory_sizes['q'] + self.memory_sizes['k']
+                memory_usage_per_pe['score'] = self.memory_sizes['score']
+                memory_usage_per_pe['context'] = self.memory_sizes['v'] + self.memory_sizes['context']
+        
+        # Calculate memory utilization percentage
+        pe_memory = self.noc.pe_memory_size
+        memory_utilization = {stage: (mem / pe_memory) * 100 
+                             for stage, mem in memory_usage_per_pe.items()}
+        
+        # Create configuration summary
+        config_summary = {
+            'execution_mode': self.execution_mode,
+            'stage_reuse': self.stage_reuse if self.execution_mode == 'pipelined' else None,
+            'split_strategy': self.split_strategy,
+            'query_seq_splits': self.query_seq_splits,
+            'key_seq_splits': self.key_seq_splits,
+            'head_dim_splits': self.head_dim_splits,
+            'total_pes_used': total_pes,
+            'pes_by_stage': pes_by_stage,
+            'memory_per_pe': memory_usage_per_pe,
+            'memory_utilization_percentage': memory_utilization,
+            'batch_size': self.batch_size,
+            'seq_len': self.seq_len,
+            'num_heads': self.num_heads,
+            'head_dim': self.head_dim
+        }
+        
+        return config_summary
+
+    def get_pe_for_attention_calculation(self, head_id, stage, component, q_idx=None, k_idx=None, d_idx=None):
+        """
+        Get the PE assigned to handle a specific attention calculation.
+
+        Args:
+            head_id (int): The attention head ID
+            stage (str): The execution stage ('all', 'qk', 'score', 'context')
+            component (str): The component to process ('q', 'k', 'v', 'score', 'context')
+            q_idx (int, optional): The index in the query sequence range
+            k_idx (int, optional): The index in the key sequence range
+            d_idx (int, optional): The index in the head dimension range
+
+        Returns:
+            tuple: PE coordinates (x, y) or None if not found
+        """
+        # If indices are provided, calculate the PE index
+        if q_idx is not None and k_idx is not None and d_idx is not None:
+            # Calculate the PE index based on the split indices
+            pe_idx = (q_idx * self.key_seq_splits * self.head_dim_splits +
+                      k_idx * self.head_dim_splits + d_idx)
+            
+            # Lookup in the mapping with the 4-tuple key
+            split_key = (head_id, stage, component, pe_idx)
+            if split_key in self.attention_pe_map:
+                return self.attention_pe_map[split_key]
+        
+        # If indices are not provided or PE wasn't found, try to find any PE for this component
+        for k, pe_coords in self.attention_pe_map.items():
+            if len(k) >= 3:  # Ensure we have at least 3 elements in the key
+                if isinstance(k, tuple) and len(k) == 4:
+                    # This is a 4-tuple key (head_id, stage, component, pe_idx)
+                    stored_head_id, stored_stage, stored_component, _ = k
+                    if stored_head_id == head_id and stored_stage == stage and stored_component == component:
+                        return pe_coords
+                elif isinstance(k, tuple) and len(k) == 3:
+                    # This is an older 3-tuple key (head_id, stage, pe_idx)
+                    stored_head_id, stored_stage, _ = k
+                    # We can't distinguish components in the old format, but try to match head_id and stage
+                    if stored_head_id == head_id and stored_stage == stage:
+                        return pe_coords
+        
+        # If no mapping is found
+        return None
+
+    def _initialize_pe_attributes(self):
+        """Initialize PE attributes when mapping starts."""
+        # Clear any previous mappings
+        self.mapped_layers = {}
+        self.pe_assignments = {}
+        self.pe_layer_map = {}
+        self.attention_pe_map = {}  # {(head_id, stage, component, pe_idx): pe_coords}
+        
+        # Mark all PEs as available
+        for x in range(self.grid_size_x):
+            for y in range(self.grid_size_y):
+                self.pe_assignments[(x, y)] = None
+        
+        # Initialize metrics
+        self.used_pes = 0
+        self.total_pes = self.grid_size_x * self.grid_size_y
