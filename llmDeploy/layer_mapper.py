@@ -1716,6 +1716,154 @@ class AttentionLayerMapper:
         # Calculate the split ranges for each component
         self._calculate_split_ranges()
 
+    def _calculate_split_ranges(self):
+        """
+        Calculate split ranges for each PE based on the chosen configuration.
+        This determines which parts of the tensors each PE will handle.
+        Each attention head is treated as a separate logical unit, with splitting
+        happening within the head's internal dimensions.
+        """
+        s = self.seq_len
+        h = self.num_heads
+        d_h = self.head_dim
+        
+        # Initialize split ranges for each component and execution stage
+        self.split_ranges = {}
+        
+        # Calculate query sequence split ranges
+        query_ranges = []
+        query_seq_per_pe = math.ceil(s / self.query_seq_splits)
+        for i in range(self.query_seq_splits):
+            start_seq = i * query_seq_per_pe
+            end_seq = min((i + 1) * query_seq_per_pe, s)
+            # Only add if there's a valid range
+            if end_seq > start_seq:
+                query_ranges.append((start_seq, end_seq))
+        
+        # Calculate key sequence split ranges
+        key_ranges = []
+        key_seq_per_pe = math.ceil(s / self.key_seq_splits)
+        for i in range(self.key_seq_splits):
+            start_seq = i * key_seq_per_pe
+            end_seq = min((i + 1) * key_seq_per_pe, s)
+            # Only add if there's a valid range
+            if end_seq > start_seq:
+                key_ranges.append((start_seq, end_seq))
+        
+        # Calculate head dimension split ranges
+        dim_ranges = []
+        dims_per_pe = math.ceil(d_h / self.head_dim_splits)
+        for i in range(self.head_dim_splits):
+            start_dim = i * dims_per_pe
+            end_dim = min((i + 1) * dims_per_pe, d_h)
+            # Only add if there's a valid range
+            if end_dim > start_dim:
+                dim_ranges.append((start_dim, end_dim))
+        
+        # Store the calculated ranges
+        self.query_ranges = query_ranges
+        self.key_ranges = key_ranges
+        self.dim_ranges = dim_ranges
+        
+        # For each head, create the appropriate split ranges
+        for head_id in range(self.num_heads):
+            # For parallel execution, create ranges for all components within a single head
+            if self.execution_mode == "parallel":
+                # For each query range, key range, and dimension range combination
+                for q_idx, (query_start, query_end) in enumerate(query_ranges):
+                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
+                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
+                            # Calculate a unique PE index based on the combination
+                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
+                                    k_idx * len(dim_ranges) + d_idx)
+                            
+                            # Q tensor split: (batch, query_seq, head_dim)
+                            self.split_ranges[(head_id, 'all', 'q', pe_idx)] = {
+                                'seq_range': (query_start, query_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                            
+                            # K tensor split: (batch, key_seq, head_dim)
+                            self.split_ranges[(head_id, 'all', 'k', pe_idx)] = {
+                                'seq_range': (key_start, key_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                            
+                            # V tensor split: (batch, key_seq, head_dim)
+                            self.split_ranges[(head_id, 'all', 'v', pe_idx)] = {
+                                'seq_range': (key_start, key_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                            
+                            # Attention score tensor split: (batch, query_seq, key_seq)
+                            self.split_ranges[(head_id, 'all', 'score', pe_idx)] = {
+                                'seq_range': (query_start, query_end),
+                                'dim_range': (key_start, key_end)
+                            }
+                            
+                            # Context tensor split: (batch, query_seq, head_dim)
+                            self.split_ranges[(head_id, 'all', 'context', pe_idx)] = {
+                                'seq_range': (query_start, query_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+            
+            # For pipelined execution, split the computation into stages
+            else:  # self.execution_mode == "pipelined"
+                # Stage 1: QK attention computation
+                for q_idx, (query_start, query_end) in enumerate(query_ranges):
+                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
+                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
+                            # Calculate a unique PE index based on the combination
+                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
+                                    k_idx * len(dim_ranges) + d_idx)
+                            
+                            # Q tensor split for this PE
+                            self.split_ranges[(head_id, 'qk', 'q', pe_idx)] = {
+                                'seq_range': (query_start, query_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                            
+                            # K tensor split for this PE
+                            self.split_ranges[(head_id, 'qk', 'k', pe_idx)] = {
+                                'seq_range': (key_start, key_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                
+                # Stage 2: Attention score computation
+                for q_idx, (query_start, query_end) in enumerate(query_ranges):
+                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
+                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
+                            # Calculate a unique PE index based on the combination
+                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
+                                    k_idx * len(dim_ranges) + d_idx)
+                            
+                            # Attention score tensor split for this PE
+                            self.split_ranges[(head_id, 'score', 'score', pe_idx)] = {
+                                'seq_range': (query_start, query_end),
+                                'dim_range': (key_start, key_end)
+                            }
+                
+                # Stage 3: Context computation (softmax(QK^T) · V)
+                for q_idx, (query_start, query_end) in enumerate(query_ranges):
+                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
+                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
+                            # Calculate a unique PE index based on the combination
+                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
+                                    k_idx * len(dim_ranges) + d_idx)
+                            
+                            # V tensor split for this PE
+                            self.split_ranges[(head_id, 'context', 'v', pe_idx)] = {
+                                'seq_range': (key_start, key_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+                            
+                            # Context tensor split for this PE
+                            self.split_ranges[(head_id, 'context', 'context', pe_idx)] = {
+                                'seq_range': (query_start, query_end),
+                                'dim_range': (dim_start, dim_end)
+                            }
+
+
     def _map_attention_to_pes(self):
         """
         Map attention calculations to PEs based on the execution mode.
@@ -2241,154 +2389,7 @@ class AttentionLayerMapper:
                         all_used_pes.add(best_coords)
         
         return aggregation_pes
-
-    def _calculate_split_ranges(self):
-        """
-        Calculate split ranges for each PE based on the chosen configuration.
-        This determines which parts of the tensors each PE will handle.
-        Each attention head is treated as a separate logical unit, with splitting
-        happening within the head's internal dimensions.
-        """
-        s = self.seq_len
-        h = self.num_heads
-        d_h = self.head_dim
         
-        # Initialize split ranges for each component and execution stage
-        self.split_ranges = {}
-        
-        # Calculate query sequence split ranges
-        query_ranges = []
-        query_seq_per_pe = math.ceil(s / self.query_seq_splits)
-        for i in range(self.query_seq_splits):
-            start_seq = i * query_seq_per_pe
-            end_seq = min((i + 1) * query_seq_per_pe, s)
-            # Only add if there's a valid range
-            if end_seq > start_seq:
-                query_ranges.append((start_seq, end_seq))
-        
-        # Calculate key sequence split ranges
-        key_ranges = []
-        key_seq_per_pe = math.ceil(s / self.key_seq_splits)
-        for i in range(self.key_seq_splits):
-            start_seq = i * key_seq_per_pe
-            end_seq = min((i + 1) * key_seq_per_pe, s)
-            # Only add if there's a valid range
-            if end_seq > start_seq:
-                key_ranges.append((start_seq, end_seq))
-        
-        # Calculate head dimension split ranges
-        dim_ranges = []
-        dims_per_pe = math.ceil(d_h / self.head_dim_splits)
-        for i in range(self.head_dim_splits):
-            start_dim = i * dims_per_pe
-            end_dim = min((i + 1) * dims_per_pe, d_h)
-            # Only add if there's a valid range
-            if end_dim > start_dim:
-                dim_ranges.append((start_dim, end_dim))
-        
-        # Store the calculated ranges
-        self.query_ranges = query_ranges
-        self.key_ranges = key_ranges
-        self.dim_ranges = dim_ranges
-        
-        # For each head, create the appropriate split ranges
-        for head_id in range(self.num_heads):
-            # For parallel execution, create ranges for all components within a single head
-            if self.execution_mode == "parallel":
-                # For each query range, key range, and dimension range combination
-                for q_idx, (query_start, query_end) in enumerate(query_ranges):
-                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
-                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
-                            # Calculate a unique PE index based on the combination
-                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
-                                    k_idx * len(dim_ranges) + d_idx)
-                            
-                            # Q tensor split: (batch, query_seq, head_dim)
-                            self.split_ranges[(head_id, 'all', 'q', pe_idx)] = {
-                                'seq_range': (query_start, query_end),
-                                'dim_range': (dim_start, dim_end)
-                            }
-                            
-                            # K tensor split: (batch, key_seq, head_dim)
-                            self.split_ranges[(head_id, 'all', 'k', pe_idx)] = {
-                                'seq_range': (key_start, key_end),
-                                'dim_range': (dim_start, dim_end)
-                            }
-                            
-                            # V tensor split: (batch, key_seq, head_dim)
-                            self.split_ranges[(head_id, 'all', 'v', pe_idx)] = {
-                                'seq_range': (key_start, key_end),
-                                'dim_range': (dim_start, dim_end)
-                            }
-                            
-                            # Attention score tensor split: (batch, query_seq, key_seq)
-                            self.split_ranges[(head_id, 'all', 'score', pe_idx)] = {
-                                'query_seq_range': (query_start, query_end),
-                                'key_seq_range': (key_start, key_end)
-                            }
-                            
-                            # Context tensor split: (batch, query_seq, head_dim)
-                            self.split_ranges[(head_id, 'all', 'context', pe_idx)] = {
-                                'seq_range': (query_start, query_end),
-                                'dim_range': (dim_start, dim_end)
-                            }
-            
-            # For pipelined execution, split the computation into stages
-            else:  # self.execution_mode == "pipelined"
-                # Stage 1: QK attention computation
-                for q_idx, (query_start, query_end) in enumerate(query_ranges):
-                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
-                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
-                            # Calculate a unique PE index based on the combination
-                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
-                                    k_idx * len(dim_ranges) + d_idx)
-                            
-                            # Q tensor split for this PE
-                            self.split_ranges[(head_id, 'qk', 'q', pe_idx)] = {
-                                'seq_range': (query_start, query_end),
-                                'dim_range': (dim_start, dim_end)
-                            }
-                            
-                            # K tensor split for this PE
-                            self.split_ranges[(head_id, 'qk', 'k', pe_idx)] = {
-                                'seq_range': (key_start, key_end),
-                                'dim_range': (dim_start, dim_end)
-                            }
-                
-                # Stage 2: Attention score computation
-                for q_idx, (query_start, query_end) in enumerate(query_ranges):
-                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
-                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
-                            # Calculate a unique PE index based on the combination
-                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
-                                    k_idx * len(dim_ranges) + d_idx)
-                            
-                            # Attention score tensor split for this PE
-                            self.split_ranges[(head_id, 'score', 'score', pe_idx)] = {
-                                'query_seq_range': (query_start, query_end),
-                                'key_seq_range': (key_start, key_end)
-                            }
-                
-                # Stage 3: Context computation (softmax(QK^T) · V)
-                for q_idx, (query_start, query_end) in enumerate(query_ranges):
-                    for k_idx, (key_start, key_end) in enumerate(key_ranges):
-                        for d_idx, (dim_start, dim_end) in enumerate(dim_ranges):
-                            # Calculate a unique PE index based on the combination
-                            pe_idx = (q_idx * len(key_ranges) * len(dim_ranges) + 
-                                    k_idx * len(dim_ranges) + d_idx)
-                            
-                            # V tensor split for this PE
-                            self.split_ranges[(head_id, 'context', 'v', pe_idx)] = {
-                                'seq_range': (key_start, key_end),
-                                'dim_range': (dim_start, dim_end)
-                            }
-                            
-                            # Context tensor split for this PE
-                            self.split_ranges[(head_id, 'context', 'context', pe_idx)] = {
-                                'seq_range': (query_start, query_end),
-                                'dim_range': (dim_start, dim_end)
-                            }
-
     def get_configuration_summary(self):
         """
         Get a summary of the attention configuration and PE assignment.
